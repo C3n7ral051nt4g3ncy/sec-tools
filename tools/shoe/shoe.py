@@ -83,7 +83,7 @@ class Shoe():
                 pass
             if timeout < time.time():
                 break
-    
+
         return response
 
     def tie(self):

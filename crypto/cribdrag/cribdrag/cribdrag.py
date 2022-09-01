@@ -14,7 +14,7 @@ import sys
 import re
 import argparse
 
-def sxor(ctext,crib):    
+def sxor(ctext,crib):
     # convert strings to a list of character pair tuples
     # go through each tuple, converting them to ASCII code (ord)
     # perform exclusive or on the ASCII code
@@ -25,9 +25,11 @@ def sxor(ctext,crib):
     crib_len = len(crib)
     positions = len(ctext)-crib_len+1
     for index in xrange(positions):
-        single_result = ''
-        for a,b in zip(ctext[index:index+crib_len],crib):
-            single_result += chr(ord(a) ^ ord(b))
+        single_result = ''.join(
+            chr(ord(a) ^ ord(b))
+            for a, b in zip(ctext[index : index + crib_len], crib)
+        )
+
         results.append(single_result)
     return results
 

@@ -261,24 +261,53 @@ def md5strtouppermd5pass():
 
 def LineageIIC4():
     hs='0x49a57f66bd3d5ba6abda5579c264a0e4'
-    if len(hash)==len(hs) and hash.isdigit()==False and hash.isalpha()==False and hash.isalnum()==True and hash[0:2].find('0x')==0:
+    if (
+        len(hash) == len(hs)
+        and hash.isdigit() == False
+        and hash.isalpha() == False
+        and hash.isalnum() == True
+        and hash[:2].find('0x') == 0
+    ):
         jerar.append("107080")
 def MD5phpBB3():
     hs='$H$9kyOtE8CDqMJ44yfn9PFz2E.L2oVzL1'
-    if len(hash)==len(hs) and hash.isdigit()==False and hash.isalpha()==False and hash.isalnum()==False and hash[0:3].find('$H$')==0:
+    if (
+        len(hash) == len(hs)
+        and hash.isdigit() == False
+        and hash.isalpha() == False
+        and hash.isalnum() == False
+        and hash[:3].find('$H$') == 0
+    ):
         jerar.append("107040")
 def MD5Unix():
     hs='$1$cTuJH0Ju$1J8rI.mJReeMvpKUZbSlY/'
-    if len(hash)==len(hs) and hash.isdigit()==False and hash.isalpha()==False and hash.isalnum()==False and hash[0:3].find('$1$')==0:
+    if (
+        len(hash) == len(hs)
+        and hash.isdigit() == False
+        and hash.isalpha() == False
+        and hash.isalnum() == False
+        and hash[:3].find('$1$') == 0
+    ):
         jerar.append("107060")
 def MD5Wordpress():
     hs='$P$BiTOhOj3ukMgCci2juN0HRbCdDRqeh.'
-    if len(hash)==len(hs) and hash.isdigit()==False and hash.isalpha()==False and hash.isalnum()==False and hash[0:3].find('$P$')==0:
+    if (
+        len(hash) == len(hs)
+        and hash.isdigit() == False
+        and hash.isalpha() == False
+        and hash.isalnum() == False
+        and hash[:3].find('$P$') == 0
+    ):
         jerar.append("107020")
 
 def MD5APR():
     hs='$apr1$qAUKoKlG$3LuCncByN76eLxZAh/Ldr1'
-    if len(hash)==len(hs) and hash.isdigit()==False and hash.isalpha()==False and hash[0:4].find('$apr')==0:
+    if (
+        len(hash) == len(hs)
+        and hash.isdigit() == False
+        and hash.isalpha() == False
+        and hash[:4].find('$apr') == 0
+    ):
         jerar.append("108020")
 
 def Haval160():
@@ -295,7 +324,13 @@ def MySQL5():
         jerar.append("109040")
 def MySQL160bit():
     hs='*2470c0c06dee42fd1618bb99005adca2ec9d1e19'
-    if len(hash)==len(hs) and hash.isdigit()==False and hash.isalpha()==False and hash.isalnum()==False and hash[0:1].find('*')==0:
+    if (
+        len(hash) == len(hs)
+        and hash.isdigit() == False
+        and hash.isalpha() == False
+        and hash.isalnum() == False
+        and hash[:1].find('*') == 0
+    ):
         jerar.append("109060")
 def RipeMD160():
     hs='dc65552812c66997ea7320ddfb51f5625d74721b'
@@ -422,7 +457,13 @@ def MD5passsaltjoomla1():
 
 def SHA1Django():
     hs='sha1$Zion3R$299c3d65a0dcab1fc38421783d64d0ecf4113448'
-    if len(hash)==len(hs) and hash.isdigit()==False and hash.isalpha()==False and hash.isalnum()==False and hash[0:5].find('sha1$')==0:
+    if (
+        len(hash) == len(hs)
+        and hash.isdigit() == False
+        and hash.isalpha() == False
+        and hash.isalnum() == False
+        and hash[:5].find('sha1$') == 0
+    ):
         jerar.append("113020")
 
 def Haval224():
@@ -498,7 +539,13 @@ def SAM():
 
 def SHA256Django():
     hs='sha256$Zion3R$9e1a08aa28a22dfff722fad7517bae68a55444bb5e2f909d340767cec9acf2c3'
-    if len(hash)==len(hs) and hash.isdigit()==False and hash.isalpha()==False and hash.isalnum()==False and hash[0:6].find('sha256')==0:
+    if (
+        len(hash) == len(hs)
+        and hash.isdigit() == False
+        and hash.isalpha() == False
+        and hash.isalnum() == False
+        and hash[:6].find('sha256') == 0
+    ):
         jerar.append("117020")
 
 def RipeMD320():
@@ -521,7 +568,13 @@ def SHA384HMAC():
 
 def SHA256s():
     hs='$6$g4TpUQzk$OmsZBJFwvy6MwZckPvVYfDnwsgktm2CckOlNJGy9HNwHSuHFvywGIuwkJ6Bjn3kKbB6zoyEjIYNMpHWBNxJ6g.'
-    if len(hash)==len(hs) and hash.isdigit()==False and hash.isalpha()==False and hash.isalnum()==False and hash[0:3].find('$6$')==0:
+    if (
+        len(hash) == len(hs)
+        and hash.isdigit() == False
+        and hash.isalpha() == False
+        and hash.isalnum() == False
+        and hash[:3].find('$6$') == 0
+    ):
         jerar.append("120020")
 
 def SHA384Django():
