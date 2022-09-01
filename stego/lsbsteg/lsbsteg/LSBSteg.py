@@ -54,15 +54,15 @@ class LSBSteg():
         self.height = im.height
         self.size = self.width * self.height
         self.nbchannels = im.channels
-        
+
         self.maskONEValues = [1,2,4,8,16,32,64,128]
         #Mask used to put one ex:1->00000001, 2->00000010 .. associated with OR bitwise
         self.maskONE = self.maskONEValues.pop(0) #Will be used to do bitwise operations
-        
+
         self.maskZEROValues = [254,253,251,247,239,223,191,127]
         #Mak used to put zero ex:254->11111110, 253->11111101 .. associated with AND bitwise
         self.maskZERO = self.maskZEROValues.pop(0)
-        
+
         self.curwidth = 0 #Current width position
         self.curheight = 0 #Current height position
         self.curchan = 0 #Current channel position
@@ -79,7 +79,7 @@ class LSBSteg():
                 val[self.curchan] = int(val[self.curchan]) | self.maskONE #OR with maskONE
             else:
                 val[self.curchan] = int(val[self.curchan]) & self.maskZERO #AND with maskZERO
-                
+
             self.image[self.curheight,self.curwidth] = tuple(val)
             self.nextSpace() #Move "cursor" to the next space
         
@@ -106,19 +106,13 @@ class LSBSteg():
         val = self.image[self.curheight,self.curwidth][self.curchan]
         val = int(val) & self.maskONE
         self.nextSpace()
-        if val > 0:
-            return "1"
-        else:
-            return "0"
+        return "1" if val > 0 else "0"
     
     def readByte(self):
         return self.readBits(8)
     
     def readBits(self, nb): #Read the given number of bits
-        bits = ""
-        for i in range(nb):
-            bits += self.readBit()
-        return bits
+        return "".join(self.readBit() for _ in range(nb))
 
     def byteValue(self, val):
         return self.binValue(val, 8)
@@ -142,11 +136,9 @@ class LSBSteg():
     def unhideText(self):
         ls = self.readBits(16) #Read the text size in bytes
         l = int(ls,2)
-        i = 0
         unhideTxt = ""
-        while i < l: #Read all bytes of the text
+        for _ in range(l):
             tmp = self.readByte() #So one byte
-            i += 1
             unhideTxt += chr(int(tmp,2)) #Every chars concatenated to str
         return unhideTxt
 
@@ -190,10 +182,7 @@ class LSBSteg():
     
     def unhideBin(self):
         l = int(self.readBits(64),2)
-        output = ""
-        for i in range(l):
-            output += chr(int(self.readByte(),2))
-        return output
+        return "".join(chr(int(self.readByte(),2)) for _ in range(l))
 
 
 
@@ -210,9 +199,8 @@ def binary_steg_reveal(steg_image, out):
     inp = cv.LoadImage(steg_image)
     steg = LSBSteg(inp)
     bin = steg.unhideBin()
-    f = open(out, "wb")
-    f.write(bin)
-    f.close()
+    with open(out, "wb") as f:
+        f.write(bin)
 
 import argparse
 

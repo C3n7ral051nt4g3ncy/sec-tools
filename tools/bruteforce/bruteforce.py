@@ -17,7 +17,7 @@ def bruteforce(charset, minlength, maxlength):
 
 # Efficently bruteforces out everything that matches [a-z]{2,3}[0-9]{1,3}[0-9]{1,3}
 # i.e. hf2492, gg22, ggg222222, etc.
-for a in bruteforce(string.ascii_lowercase, 2, 3):
-	for b in bruteforce(string.digits, 1, 3):
-		for c in bruteforce(string.digits, 1, 3):
-			pass	
+for _ in bruteforce(string.ascii_lowercase, 2, 3):
+    for _ in bruteforce(string.digits, 1, 3):
+        for _ in bruteforce(string.digits, 1, 3):
+            pass	

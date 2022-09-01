@@ -70,15 +70,14 @@ def parse_args():
    return parser.parse_args()
 
 def iface_finder():
-    try:
-        ipr = Popen(['/sbin/ip', 'route'], stdout=PIPE, stderr=DN)
-        for line in ipr.communicate()[0].splitlines():
-            if 'default' in line:
-                l = line.split()
-                iface = l[4]
-                return iface
-    except IOError:
-        exit('[-] Could not find an internet active interface; please specify one with -i <interface>')
+   try:
+      ipr = Popen(['/sbin/ip', 'route'], stdout=PIPE, stderr=DN)
+      for line in ipr.communicate()[0].splitlines():
+         if 'default' in line:
+            l = line.split()
+            return l[4]
+   except IOError:
+       exit('[-] Could not find an internet active interface; please specify one with -i <interface>')
 
 def frag_remover(ack, load):
     '''
@@ -113,236 +112,230 @@ def frag_remover(ack, load):
                 pkt_frag_loads[ip_port][ack] = pkt_frag_loads[ip_port][ack][-200:]
 
 def frag_joiner(ack, src_ip_port, load):
-    '''
+   '''
     Keep a store of previous fragments in an OrderedDict named pkt_frag_loads
     '''
-    for ip_port in pkt_frag_loads:
-        if src_ip_port == ip_port:
-            if ack in pkt_frag_loads[src_ip_port]:
-                # Make pkt_frag_loads[src_ip_port][ack] = full load
-                old_load = pkt_frag_loads[src_ip_port][ack]
-                concat_load = old_load + load
-                return OrderedDict([(ack, concat_load)])
+   for ip_port in pkt_frag_loads:
+      if src_ip_port == ip_port and ack in pkt_frag_loads[src_ip_port]:
+         # Make pkt_frag_loads[src_ip_port][ack] = full load
+         old_load = pkt_frag_loads[src_ip_port][ack]
+         concat_load = old_load + load
+         return OrderedDict([(ack, concat_load)])
 
-    return OrderedDict([(ack, load)])
+   return OrderedDict([(ack, load)])
 
 def pkt_parser(pkt):
-    '''
+   '''
     Start parsing packets here
     '''
-    global pkt_frag_loads, mail_auths
+   global pkt_frag_loads, mail_auths
 
-    if pkt.haslayer(Raw):
-        load = pkt[Raw].load
+   if pkt.haslayer(Raw):
+       load = pkt[Raw].load
 
-    # Get rid of Ethernet pkts with just a raw load cuz these are usually network controls like flow control
-    if pkt.haslayer(Ether) and pkt.haslayer(Raw) and not pkt.haslayer(IP) and not pkt.haslayer(IPv6):
-        return
+   # Get rid of Ethernet pkts with just a raw load cuz these are usually network controls like flow control
+   if pkt.haslayer(Ether) and pkt.haslayer(Raw) and not pkt.haslayer(IP) and not pkt.haslayer(IPv6):
+       return
 
     # UDP
-    if pkt.haslayer(UDP) and pkt.haslayer(IP) and pkt.haslayer(Raw):
+   if pkt.haslayer(UDP) and pkt.haslayer(IP) and pkt.haslayer(Raw):
 
-        src_ip_port = str(pkt[IP].src) + ':' + str(pkt[UDP].sport)
-        dst_ip_port = str(pkt[IP].dst) + ':' + str(pkt[UDP].dport)
+      src_ip_port = f'{str(pkt[IP].src)}:{str(pkt[UDP].sport)}'
+      dst_ip_port = f'{str(pkt[IP].dst)}:{str(pkt[UDP].dport)}'
 
-        # SNMP community strings
-        if pkt.haslayer(SNMP):
-            parse_snmp(src_ip_port, dst_ip_port, pkt[SNMP])
-            return
+      # SNMP community strings
+      if pkt.haslayer(SNMP):
+          parse_snmp(src_ip_port, dst_ip_port, pkt[SNMP])
+          return
 
-        # Kerberos over UDP
-        decoded = Decode_Ip_Packet(str(pkt)[14:])
-        kerb_hash = ParseMSKerbv5UDP(decoded['data'][8:])
-        if kerb_hash:
-            printer(src_ip_port, dst_ip_port, kerb_hash)
+      # Kerberos over UDP
+      decoded = Decode_Ip_Packet(str(pkt)[14:])
+      if kerb_hash := ParseMSKerbv5UDP(decoded['data'][8:]):
+         printer(src_ip_port, dst_ip_port, kerb_hash)
 
-    # TCP
-    elif pkt.haslayer(TCP) and pkt.haslayer(Raw) and pkt.haslayer(IP):
+   elif pkt.haslayer(TCP) and pkt.haslayer(Raw) and pkt.haslayer(IP):
 
-        ack = str(pkt[TCP].ack)
-        seq = str(pkt[TCP].seq)
-        src_ip_port = str(pkt[IP].src) + ':' + str(pkt[TCP].sport)
-        dst_ip_port = str(pkt[IP].dst) + ':' + str(pkt[TCP].dport)
-        frag_remover(ack, load)
-        pkt_frag_loads[src_ip_port] = frag_joiner(ack, src_ip_port, load)
-        full_load = pkt_frag_loads[src_ip_port][ack]
+      ack = str(pkt[TCP].ack)
+      seq = str(pkt[TCP].seq)
+      src_ip_port = f'{str(pkt[IP].src)}:{str(pkt[TCP].sport)}'
+      dst_ip_port = f'{str(pkt[IP].dst)}:{str(pkt[TCP].dport)}'
+      frag_remover(ack, load)
+      pkt_frag_loads[src_ip_port] = frag_joiner(ack, src_ip_port, load)
+      full_load = pkt_frag_loads[src_ip_port][ack]
 
-        # Limit the packets we regex to increase efficiency
-        # 750 is a bit arbitrary but some SMTP auth success pkts
-        # are 500+ characters
-        if 0 < len(full_load) < 750:
+      # Limit the packets we regex to increase efficiency
+      # 750 is a bit arbitrary but some SMTP auth success pkts
+      # are 500+ characters
+      if 0 < len(full_load) < 750:
 
-            # FTP
-            ftp_creds = parse_ftp(full_load, dst_ip_port)
-            if len(ftp_creds) > 0:
-                for msg in ftp_creds:
-                    printer(src_ip_port, dst_ip_port, msg)
-                return
+          # FTP
+          ftp_creds = parse_ftp(full_load, dst_ip_port)
+          if len(ftp_creds) > 0:
+              for msg in ftp_creds:
+                  printer(src_ip_port, dst_ip_port, msg)
+              return
 
-            # Mail
-            mail_creds_found = mail_logins(full_load, src_ip_port, dst_ip_port, ack, seq)
+          # Mail
+          mail_creds_found = mail_logins(full_load, src_ip_port, dst_ip_port, ack, seq)
 
-            # IRC
-            irc_creds = irc_logins(full_load, pkt)
-            if irc_creds != None:
-                printer(src_ip_port, dst_ip_port, irc_creds)
-                return
+          # IRC
+          irc_creds = irc_logins(full_load, pkt)
+          if irc_creds != None:
+              printer(src_ip_port, dst_ip_port, irc_creds)
+              return
 
-            # Telnet
-            telnet_logins(src_ip_port, dst_ip_port, load, ack, seq)
+          # Telnet
+          telnet_logins(src_ip_port, dst_ip_port, load, ack, seq)
 
-        # HTTP and other protocols that run on TCP + a raw load
-        other_parser(src_ip_port, dst_ip_port, full_load, ack, seq, pkt, parse_args().verbose)
+      # HTTP and other protocols that run on TCP + a raw load
+      other_parser(src_ip_port, dst_ip_port, full_load, ack, seq, pkt, parse_args().verbose)
 
 def telnet_logins(src_ip_port, dst_ip_port, load, ack, seq):
-    '''
+   '''
     Catch telnet logins and passwords
     '''
-    global telnet_stream
+   global telnet_stream
 
-    msg = None
+   msg = None
 
-    if src_ip_port in telnet_stream:
-        # Do a utf decode in case the client sends telnet options before their username
-        # No one would care to see that
-        try:
-            telnet_stream[src_ip_port] += load.decode('utf8')
-        except UnicodeDecodeError:
-            pass
+   if src_ip_port in telnet_stream:
+      # Do a utf decode in case the client sends telnet options before their username
+      # No one would care to see that
+      try:
+          telnet_stream[src_ip_port] += load.decode('utf8')
+      except UnicodeDecodeError:
+          pass
 
         # \r or \r\n or \n terminate commands in telnet if my pcaps are to be believed
-        if '\r' in telnet_stream[src_ip_port] or '\n' in telnet_stream[src_ip_port]:
-            telnet_split = telnet_stream[src_ip_port].split(' ', 1)
-            cred_type = telnet_split[0]
-            value = telnet_split[1].replace('\r\n', '').replace('\r', '').replace('\n', '')
+      if '\r' in telnet_stream[src_ip_port] or '\n' in telnet_stream[src_ip_port]:
+         telnet_split = telnet_stream[src_ip_port].split(' ', 1)
+         cred_type = telnet_split[0]
+         value = telnet_split[1].replace('\r\n', '').replace('\r', '').replace('\n', '')
             # Create msg, the return variable
-            msg = 'Telnet %s: %s' % (cred_type, value)
-            printer(src_ip_port, dst_ip_port, msg)
-            del telnet_stream[src_ip_port]
+         msg = f'Telnet {cred_type}: {value}'
+         printer(src_ip_port, dst_ip_port, msg)
+         del telnet_stream[src_ip_port]
 
-    # This part relies on the telnet packet ending in
-    # "login:", "password:", or "username:" and being <750 chars
-    # Haven't seen any false+ but this is pretty general
-    # might catch some eventually
-    # maybe use dissector.py telnet lib?
-    if len(telnet_stream) > 100:
-        telnet_stream.popitem(last=False)
-    mod_load = load.lower().strip()
-    if mod_load.endswith('username:') or mod_load.endswith('login:'):
-        telnet_stream[dst_ip_port] = 'username '
-    elif mod_load.endswith('password:'):
-        telnet_stream[dst_ip_port] = 'password '
+   # This part relies on the telnet packet ending in
+   # "login:", "password:", or "username:" and being <750 chars
+   # Haven't seen any false+ but this is pretty general
+   # might catch some eventually
+   # maybe use dissector.py telnet lib?
+   if len(telnet_stream) > 100:
+       telnet_stream.popitem(last=False)
+   mod_load = load.lower().strip()
+   if mod_load.endswith('username:') or mod_load.endswith('login:'):
+       telnet_stream[dst_ip_port] = 'username '
+   elif mod_load.endswith('password:'):
+       telnet_stream[dst_ip_port] = 'password '
 
 def ParseMSKerbv5TCP(Data):
-    '''
+   '''
     Taken from Pcredz because I didn't want to spend the time doing this myself
     I should probably figure this out on my own but hey, time isn't free, why reinvent the wheel?
     Maybe replace this eventually with the kerberos python lib
     Parses Kerberosv5 hashes from packets
     '''
-    try:
-        MsgType = Data[21:22]
-        EncType = Data[43:44]
-        MessageType = Data[32:33]
-    except IndexError:
-        return
+   try:
+       MsgType = Data[21:22]
+       EncType = Data[43:44]
+       MessageType = Data[32:33]
+   except IndexError:
+       return
 
-    if MsgType == "\x0a" and EncType == "\x17" and MessageType =="\x02":
-        if Data[49:53] == "\xa2\x36\x04\x34" or Data[49:53] == "\xa2\x35\x04\x33":
-            HashLen = struct.unpack('<b',Data[50:51])[0]
-            if HashLen == 54:
-                Hash = Data[53:105]
-                SwitchHash = Hash[16:]+Hash[0:16]
-                NameLen = struct.unpack('<b',Data[153:154])[0]
-                Name = Data[154:154+NameLen]
-                DomainLen = struct.unpack('<b',Data[154+NameLen+3:154+NameLen+4])[0]
-                Domain = Data[154+NameLen+4:154+NameLen+4+DomainLen]
-                BuildHash = "$krb5pa$23$"+Name+"$"+Domain+"$dummy$"+SwitchHash.encode('hex')
-                return 'MS Kerberos: %s' % BuildHash
+   if MsgType == "\x0a" and EncType == "\x17" and MessageType =="\x02":
+      if Data[49:53] in ["\xa2\x36\x04\x34", "\xa2\x35\x04\x33"]:
+         HashLen = struct.unpack('<b',Data[50:51])[0]
+         if HashLen == 54:
+            Hash = Data[53:105]
+            SwitchHash = Hash[16:] + Hash[:16]
+            NameLen = struct.unpack('<b',Data[153:154])[0]
+            Name = Data[154:154+NameLen]
+            DomainLen = struct.unpack('<b',Data[154+NameLen+3:154+NameLen+4])[0]
+            Domain = Data[154+NameLen+4:154+NameLen+4+DomainLen]
+            BuildHash = f"$krb5pa$23${Name}${Domain}$dummy$" + SwitchHash.encode('hex')
+            return f'MS Kerberos: {BuildHash}'
 
-        if Data[44:48] == "\xa2\x36\x04\x34" or Data[44:48] == "\xa2\x35\x04\x33":
-            HashLen = struct.unpack('<b',Data[47:48])[0]
-            Hash = Data[48:48+HashLen]
-            SwitchHash = Hash[16:]+Hash[0:16]
-            NameLen = struct.unpack('<b',Data[HashLen+96:HashLen+96+1])[0]
-            Name = Data[HashLen+97:HashLen+97+NameLen]
-            DomainLen = struct.unpack('<b',Data[HashLen+97+NameLen+3:HashLen+97+NameLen+4])[0]
-            Domain = Data[HashLen+97+NameLen+4:HashLen+97+NameLen+4+DomainLen]
-            BuildHash = "$krb5pa$23$"+Name+"$"+Domain+"$dummy$"+SwitchHash.encode('hex')
-            return 'MS Kerberos: %s' % BuildHash
+      if Data[44:48] in ["\xa2\x36\x04\x34", "\xa2\x35\x04\x33"]:
+         HashLen = struct.unpack('<b',Data[47:48])[0]
+         Hash = Data[48:48+HashLen]
+         SwitchHash = Hash[16:] + Hash[:16]
+         NameLen = struct.unpack('<b',Data[HashLen+96:HashLen+96+1])[0]
+         Name = Data[HashLen+97:HashLen+97+NameLen]
+         DomainLen = struct.unpack('<b',Data[HashLen+97+NameLen+3:HashLen+97+NameLen+4])[0]
+         Domain = Data[HashLen+97+NameLen+4:HashLen+97+NameLen+4+DomainLen]
+      else:
+         Hash = Data[48:100]
+         SwitchHash = Hash[16:] + Hash[:16]
+         NameLen = struct.unpack('<b',Data[148:149])[0]
+         Name = Data[149:149+NameLen]
+         DomainLen = struct.unpack('<b',Data[149+NameLen+3:149+NameLen+4])[0]
+         Domain = Data[149+NameLen+4:149+NameLen+4+DomainLen]
 
-        else:
-            Hash = Data[48:100]
-            SwitchHash = Hash[16:]+Hash[0:16]
-            NameLen = struct.unpack('<b',Data[148:149])[0]
-            Name = Data[149:149+NameLen]
-            DomainLen = struct.unpack('<b',Data[149+NameLen+3:149+NameLen+4])[0]
-            Domain = Data[149+NameLen+4:149+NameLen+4+DomainLen]
-            BuildHash = "$krb5pa$23$"+Name+"$"+Domain+"$dummy$"+SwitchHash.encode('hex')
-            return 'MS Kerberos: %s' % BuildHash
+      BuildHash = f"$krb5pa$23${Name}${Domain}$dummy$" + SwitchHash.encode('hex')
+      return f'MS Kerberos: {BuildHash}'
 
 def ParseMSKerbv5UDP(Data):
-    '''
+   '''
     Taken from Pcredz because I didn't want to spend the time doing this myself
     I should probably figure this out on my own but hey, time isn't free why reinvent the wheel?
     Maybe replace this eventually with the kerberos python lib
     Parses Kerberosv5 hashes from packets
     '''
 
-    try:
-        MsgType = Data[17:18]
-        EncType = Data[39:40]
-    except IndexError:
-        return
+   try:
+       MsgType = Data[17:18]
+       EncType = Data[39:40]
+   except IndexError:
+       return
 
-    if MsgType == "\x0a" and EncType == "\x17":
-        try:
-            if Data[40:44] == "\xa2\x36\x04\x34" or Data[40:44] == "\xa2\x35\x04\x33":
-                HashLen = struct.unpack('<b',Data[41:42])[0]
-                if HashLen == 54:
-                    Hash = Data[44:96]
-                    SwitchHash = Hash[16:]+Hash[0:16]
-                    NameLen = struct.unpack('<b',Data[144:145])[0]
-                    Name = Data[145:145+NameLen]
-                    DomainLen = struct.unpack('<b',Data[145+NameLen+3:145+NameLen+4])[0]
-                    Domain = Data[145+NameLen+4:145+NameLen+4+DomainLen]
-                    BuildHash = "$krb5pa$23$"+Name+"$"+Domain+"$dummy$"+SwitchHash.encode('hex')
-                    return 'MS Kerberos: %s' % BuildHash
+   if MsgType == "\x0a" and EncType == "\x17":
+      try:
+         if Data[40:44] in ["\xa2\x36\x04\x34", "\xa2\x35\x04\x33"]:
+            HashLen = struct.unpack('<b',Data[41:42])[0]
+            if HashLen == 54:
+               Hash = Data[44:96]
+               SwitchHash = Hash[16:] + Hash[:16]
+               NameLen = struct.unpack('<b',Data[144:145])[0]
+               Name = Data[145:145+NameLen]
+               DomainLen = struct.unpack('<b',Data[145+NameLen+3:145+NameLen+4])[0]
+               Domain = Data[145+NameLen+4:145+NameLen+4+DomainLen]
+               BuildHash = f"$krb5pa$23${Name}${Domain}$dummy$" + SwitchHash.encode('hex')
+               return f'MS Kerberos: {BuildHash}'
 
-                if HashLen == 53:
-                    Hash = Data[44:95]
-                    SwitchHash = Hash[16:]+Hash[0:16]
-                    NameLen = struct.unpack('<b',Data[143:144])[0]
-                    Name = Data[144:144+NameLen]
-                    DomainLen = struct.unpack('<b',Data[144+NameLen+3:144+NameLen+4])[0]
-                    Domain = Data[144+NameLen+4:144+NameLen+4+DomainLen]
-                    BuildHash = "$krb5pa$23$"+Name+"$"+Domain+"$dummy$"+SwitchHash.encode('hex')
-                    return 'MS Kerberos: %s' % BuildHash
+            if HashLen == 53:
+               Hash = Data[44:95]
+               SwitchHash = Hash[16:] + Hash[:16]
+               NameLen = struct.unpack('<b',Data[143:144])[0]
+               Name = Data[144:144+NameLen]
+               DomainLen = struct.unpack('<b',Data[144+NameLen+3:144+NameLen+4])[0]
+               Domain = Data[144+NameLen+4:144+NameLen+4+DomainLen]
+               BuildHash = f"$krb5pa$23${Name}${Domain}$dummy$" + SwitchHash.encode('hex')
+               return f'MS Kerberos: {BuildHash}'
 
-            else:
-                HashLen = struct.unpack('<b',Data[48:49])[0]
-                Hash = Data[49:49+HashLen]
-                SwitchHash = Hash[16:]+Hash[0:16]
-                NameLen = struct.unpack('<b',Data[HashLen+97:HashLen+97+1])[0]
-                Name = Data[HashLen+98:HashLen+98+NameLen]
-                DomainLen = struct.unpack('<b',Data[HashLen+98+NameLen+3:HashLen+98+NameLen+4])[0]
-                Domain = Data[HashLen+98+NameLen+4:HashLen+98+NameLen+4+DomainLen]
-                BuildHash = "$krb5pa$23$"+Name+"$"+Domain+"$dummy$"+SwitchHash.encode('hex')
-                return 'MS Kerberos: %s' % BuildHash
-        except struct.error:
-            return
+         else:
+            HashLen = struct.unpack('<b',Data[48:49])[0]
+            Hash = Data[49:49+HashLen]
+            SwitchHash = Hash[16:] + Hash[:16]
+            NameLen = struct.unpack('<b',Data[HashLen+97:HashLen+97+1])[0]
+            Name = Data[HashLen+98:HashLen+98+NameLen]
+            DomainLen = struct.unpack('<b',Data[HashLen+98+NameLen+3:HashLen+98+NameLen+4])[0]
+            Domain = Data[HashLen+98+NameLen+4:HashLen+98+NameLen+4+DomainLen]
+            BuildHash = f"$krb5pa$23${Name}${Domain}$dummy$" + SwitchHash.encode('hex')
+            return f'MS Kerberos: {BuildHash}'
+      except struct.error:
+          return
 
 def Decode_Ip_Packet(s):
-    '''
+   '''
     Taken from PCredz, solely to get Kerb parsing
     working until I have time to analyze Kerb pkts
     and figure out a simpler way
     Maybe use kerberos python lib
     '''
-    d={}
-    d['header_len']=ord(s[0]) & 0x0f
-    d['data']=s[4*d['header_len']:]
-    return d
+   d = {'header_len': ord(s[0]) & 0x0f}
+   d['data']=s[4*d['header_len']:]
+   return d
 
 def double_line_checker(full_load, count_str):
     '''
@@ -356,198 +349,190 @@ def double_line_checker(full_load, count_str):
     return full_load
 
 def parse_ftp(full_load, dst_ip_port):
-    '''
+   '''
     Parse out FTP creds
     '''
-    print_strs = []
+   print_strs = []
 
-    # Sometimes FTP packets double up on the authentication lines
-    # We just want the lastest one. Ex: "USER danmcinerney\r\nUSER danmcinerney\r\n"
-    full_load = double_line_checker(full_load, 'USER')
+   # Sometimes FTP packets double up on the authentication lines
+   # We just want the lastest one. Ex: "USER danmcinerney\r\nUSER danmcinerney\r\n"
+   full_load = double_line_checker(full_load, 'USER')
 
-    # FTP and POP potentially use idential client > server auth pkts
-    ftp_user = re.match(ftp_user_re, full_load)
-    ftp_pass = re.match(ftp_pw_re, full_load)
+   # FTP and POP potentially use idential client > server auth pkts
+   ftp_user = re.match(ftp_user_re, full_load)
+   ftp_pass = re.match(ftp_pw_re, full_load)
 
-    if ftp_user:
-        msg1 = 'FTP User: %s' % ftp_user.group(1).strip()
-        print_strs.append(msg1)
-        if dst_ip_port[-3:] != ':21':
-            msg2 = 'Nonstandard FTP port, confirm the service that is running on it'
-            print_strs.append(msg2)
+   if ftp_user:
+      msg1 = f'FTP User: {ftp_user.group(1).strip()}'
+      print_strs.append(msg1)
+      if dst_ip_port[-3:] != ':21':
+          msg2 = 'Nonstandard FTP port, confirm the service that is running on it'
+          print_strs.append(msg2)
 
-    elif ftp_pass:
-        msg1 = 'FTP Pass: %s' % ftp_pass.group(1).strip()
-        print_strs.append(msg1)
-        if dst_ip_port[-3:] != ':21':
-            msg2 = 'Nonstandard FTP port, confirm the service that is running on it'
-            print_strs.append(msg2)
+   elif ftp_pass:
+      msg1 = f'FTP Pass: {ftp_pass.group(1).strip()}'
+      print_strs.append(msg1)
+      if dst_ip_port[-3:] != ':21':
+          msg2 = 'Nonstandard FTP port, confirm the service that is running on it'
+          print_strs.append(msg2)
 
-    return print_strs
+   return print_strs
 
 def mail_decode(src_ip_port, dst_ip_port, mail_creds):
-    '''
+   '''
     Decode base64 mail creds
     '''
-    try:
-        decoded = base64.b64decode(mail_creds).replace('\x00', ' ').decode('utf8')
-        decoded = decoded.replace('\x00', ' ')
-    except TypeError:
-        decoded = None
-    except UnicodeDecodeError as e:
-        decoded = None
+   try:
+       decoded = base64.b64decode(mail_creds).replace('\x00', ' ').decode('utf8')
+       decoded = decoded.replace('\x00', ' ')
+   except TypeError:
+       decoded = None
+   except UnicodeDecodeError as e:
+       decoded = None
 
-    if decoded != None:
-        msg = 'Decoded: %s' % decoded
-        printer(src_ip_port, dst_ip_port, msg)
+   if decoded != None:
+      msg = f'Decoded: {decoded}'
+      printer(src_ip_port, dst_ip_port, msg)
 
 def mail_logins(full_load, src_ip_port, dst_ip_port, ack, seq):
-    '''
+   '''
     Catch IMAP, POP, and SMTP logins
     '''
-    # Handle the first packet of mail authentication
-    # if the creds aren't in the first packet, save it in mail_auths
+   # Handle the first packet of mail authentication
+   # if the creds aren't in the first packet, save it in mail_auths
 
-    # mail_auths = 192.168.0.2 : [1st ack, 2nd ack...]
-    global mail_auths
-    found = False
+   # mail_auths = 192.168.0.2 : [1st ack, 2nd ack...]
+   global mail_auths
+   found = False
 
-    # Sometimes mail packets double up on the authentication lines
-    # We just want the lastest one. Ex: "1 auth plain\r\n2 auth plain\r\n"
-    full_load = double_line_checker(full_load, 'auth')
+   # Sometimes mail packets double up on the authentication lines
+   # We just want the lastest one. Ex: "1 auth plain\r\n2 auth plain\r\n"
+   full_load = double_line_checker(full_load, 'auth')
 
     # Client to server 2nd+ pkt
-    if src_ip_port in mail_auths:
-        if seq in mail_auths[src_ip_port][-1]:
-            stripped = full_load.strip('\r\n')
-            try:
-                decoded = base64.b64decode(stripped)
-                msg = 'Mail authentication: %s' % decoded
-                printer(src_ip_port, dst_ip_port, msg)
-            except TypeError:
-                pass
-            mail_auths[src_ip_port].append(ack)
+   if src_ip_port in mail_auths:
+      if seq in mail_auths[src_ip_port][-1]:
+         stripped = full_load.strip('\r\n')
+         try:
+            decoded = base64.b64decode(stripped)
+            msg = f'Mail authentication: {decoded}'
+            printer(src_ip_port, dst_ip_port, msg)
+         except TypeError:
+             pass
+         mail_auths[src_ip_port].append(ack)
 
-    # Server responses to client
-    # seq always = last ack of tcp stream
-    elif dst_ip_port in mail_auths:
-        if seq in mail_auths[dst_ip_port][-1]:
-            # Look for any kind of auth failure or success
-            a_s = 'Authentication successful'
-            a_f = 'Authentication failed'
-            # SMTP auth was successful
-            if full_load.startswith('235') and 'auth' in full_load.lower():
-                # Reversed the dst and src
-                printer(dst_ip_port, src_ip_port, a_s)
-                found = True
-                try:
-                    del mail_auths[dst_ip_port]
-                except KeyError:
-                    pass
-            # SMTP failed
-            elif full_load.startswith('535 '):
-                # Reversed the dst and src
-                printer(dst_ip_port, src_ip_port, a_f)
-                found = True
-                try:
-                    del mail_auths[dst_ip_port]
-                except KeyError:
-                    pass
-            # IMAP/POP/SMTP failed
-            elif ' fail' in full_load.lower():
-                # Reversed the dst and src
-                printer(dst_ip_port, src_ip_port, a_f)
-                found = True
-                try:
-                    del mail_auths[dst_ip_port]
-                except KeyError:
-                    pass
-            # IMAP auth success
-            elif ' OK [' in full_load:
-                # Reversed the dst and src
-                printer(dst_ip_port, src_ip_port, a_s)
-                found = True
-                try:
-                    del mail_auths[dst_ip_port]
-                except KeyError:
-                    pass
+   elif dst_ip_port in mail_auths:
+       if seq in mail_auths[dst_ip_port][-1]:
+           # Look for any kind of auth failure or success
+           a_s = 'Authentication successful'
+           a_f = 'Authentication failed'
+           # SMTP auth was successful
+           if full_load.startswith('235') and 'auth' in full_load.lower():
+               # Reversed the dst and src
+               printer(dst_ip_port, src_ip_port, a_s)
+               found = True
+               try:
+                   del mail_auths[dst_ip_port]
+               except KeyError:
+                   pass
+           # SMTP failed
+           elif full_load.startswith('535 '):
+               # Reversed the dst and src
+               printer(dst_ip_port, src_ip_port, a_f)
+               found = True
+               try:
+                   del mail_auths[dst_ip_port]
+               except KeyError:
+                   pass
+           # IMAP/POP/SMTP failed
+           elif ' fail' in full_load.lower():
+               # Reversed the dst and src
+               printer(dst_ip_port, src_ip_port, a_f)
+               found = True
+               try:
+                   del mail_auths[dst_ip_port]
+               except KeyError:
+                   pass
+           # IMAP auth success
+           elif ' OK [' in full_load:
+               # Reversed the dst and src
+               printer(dst_ip_port, src_ip_port, a_s)
+               found = True
+               try:
+                   del mail_auths[dst_ip_port]
+               except KeyError:
+                   pass
 
-            # Pkt was not an auth pass/fail so its just a normal server ack
-            # that it got the client's first auth pkt
-            else:
-                if len(mail_auths) > 100:
-                    mail_auths.popitem(last=False)
-                mail_auths[dst_ip_port].append(ack)
+           # Pkt was not an auth pass/fail so its just a normal server ack
+           # that it got the client's first auth pkt
+           else:
+               if len(mail_auths) > 100:
+                   mail_auths.popitem(last=False)
+               mail_auths[dst_ip_port].append(ack)
 
-    # Client to server but it's a new TCP seq
-    # This handles most POP/IMAP/SMTP logins but there's at least one edge case
-    else:
-        mail_auth_search = re.match(mail_auth_re, full_load, re.IGNORECASE)
-        if mail_auth_search != None:
-            auth_msg = full_load
+   else:
+      mail_auth_search = re.match(mail_auth_re, full_load, re.IGNORECASE)
+      if mail_auth_search != None:
+         auth_msg = full_load
             # IMAP uses the number at the beginning
-            if mail_auth_search.group(1) != None:
-                auth_msg = auth_msg.split()[1:]
-            else:
-                auth_msg = auth_msg.split()
+         if mail_auth_search.group(1) is None:
+            auth_msg = auth_msg.split()
+         else:
+            auth_msg = auth_msg.split()[1:]
             # Check if its a pkt like AUTH PLAIN dvcmQxIQ==
             # rather than just an AUTH PLAIN
-            if len(auth_msg) > 2:
-                mail_creds = ' '.join(auth_msg[2:])
-                msg = 'Mail authentication: %s' % mail_creds
-                printer(src_ip_port, dst_ip_port, msg)
+         if len(auth_msg) > 2:
+            mail_creds = ' '.join(auth_msg[2:])
+            msg = f'Mail authentication: {mail_creds}'
+            printer(src_ip_port, dst_ip_port, msg)
 
-                mail_decode(src_ip_port, dst_ip_port, mail_creds)
-                try:
-                    del mail_auths[src_ip_port]
-                except KeyError:
-                    pass
-                found = True
+            mail_decode(src_ip_port, dst_ip_port, mail_creds)
+            try:
+                del mail_auths[src_ip_port]
+            except KeyError:
+                pass
+            found = True
 
-            # Mail auth regex was found and src_ip_port is not in mail_auths
-            # Pkt was just the initial auth cmd, next pkt from client will hold creds
-            if len(mail_auths) > 100:
-                mail_auths.popitem(last=False)
-            mail_auths[src_ip_port] = [ack]
+         # Mail auth regex was found and src_ip_port is not in mail_auths
+         # Pkt was just the initial auth cmd, next pkt from client will hold creds
+         if len(mail_auths) > 100:
+             mail_auths.popitem(last=False)
+         mail_auths[src_ip_port] = [ack]
 
-        # At least 1 mail login style doesn't fit in the original regex:
-        #     1 login "username" "password"
-        # This also catches FTP authentication!
-        #     230 Login successful.
-        elif re.match(mail_auth_re1, full_load, re.IGNORECASE) != None:
+      elif re.match(mail_auth_re1, full_load, re.IGNORECASE) != None:
 
-            # FTP authentication failures trigger this
-            #if full_load.lower().startswith('530 login'):
-            #    return
+         # FTP authentication failures trigger this
+         #if full_load.lower().startswith('530 login'):
+         #    return
 
-            auth_msg = full_load
-            auth_msg = auth_msg.split()
-            if 2 < len(auth_msg) < 5:
-                mail_creds = ' '.join(auth_msg[2:])
-                msg = 'Authentication: %s' % mail_creds
-                printer(src_ip_port, dst_ip_port, msg)
-                mail_decode(src_ip_port, dst_ip_port, mail_creds)
-                found = True
+         auth_msg = full_load
+         auth_msg = auth_msg.split()
+         if 2 < len(auth_msg) < 5:
+            mail_creds = ' '.join(auth_msg[2:])
+            msg = f'Authentication: {mail_creds}'
+            printer(src_ip_port, dst_ip_port, msg)
+            mail_decode(src_ip_port, dst_ip_port, mail_creds)
+            found = True
 
-    if found == True:
-        return True
+   if found:
+      return True
 
 def irc_logins(full_load, pkt):
-    '''
+   '''
     Find IRC logins
     '''
-    user_search = re.match(irc_user_re, full_load)
-    pass_search = re.match(irc_pw_re, full_load)
-    pass_search2 = re.search(irc_pw_re2, full_load.lower())
-    if user_search:
-        msg = 'IRC nick: %s' % user_search.group(1)
-        return msg
-    if pass_search:
-        msg = 'IRC pass: %s' % pass_search.group(1)
-        return msg
-    if pass_search2:
-        msg = 'IRC pass: %s' % pass_search2.group(1)
-        return msg
+   user_search = re.match(irc_user_re, full_load)
+   pass_search = re.match(irc_pw_re, full_load)
+   pass_search2 = re.search(irc_pw_re2, full_load.lower())
+   if user_search:
+      msg = f'IRC nick: {user_search.group(1)}'
+      return msg
+   if pass_search:
+      msg = f'IRC pass: {pass_search.group(1)}'
+      return msg
+   if pass_search2:
+      msg = f'IRC pass: {pass_search2.group(1)}'
+      return msg
 
 def other_parser(src_ip_port, dst_ip_port, full_load, ack, seq, pkt, verbose):
     '''
